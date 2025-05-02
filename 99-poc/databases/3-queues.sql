@@ -36,7 +36,6 @@ declare
 	job_batches jsonb[];
 	batch jsonb;
 begin
-	-- ... (el código WITH permanece igual) ...
 	with
 		numbered_jobs as (
 			select
@@ -59,15 +58,13 @@ begin
 	from batched_jobs
 	into job_batches;
 
-	-- Invoke using positional arguments
 	foreach batch in array job_batches loop
-			-- Llamada posicional: (text, jsonb, integer)
-			perform util.invoke_edge_function(
-					'embed'::text,
-					batch,
-					timeout_milliseconds
-					);
-		end loop;
+		perform util.invoke_edge_function(
+			'embed'::text,
+			batch,
+			timeout_milliseconds
+		);
+	end loop;
 end;
 $$;
 

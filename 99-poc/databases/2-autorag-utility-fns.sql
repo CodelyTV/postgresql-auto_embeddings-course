@@ -1,7 +1,5 @@
--- Schema for utility functions
 create schema util;
 
--- Utility function to get the Supabase project URL (required for Edge Functions)
 create or replace function util.project_url()
 	returns text
 	language plpgsql
@@ -17,7 +15,6 @@ begin
 end;
 $$;
 
--- Generic function to invoke any Edge Function
 CREATE OR REPLACE FUNCTION util.invoke_edge_function(name text, body jsonb, timeout_milliseconds integer DEFAULT ((5 * 60) * 1000)) RETURNS void
 	LANGUAGE plpgsql
 AS
@@ -38,26 +35,20 @@ begin
 						   null
 		end;
 
-	-- Construir la URL completa
 	target_url := util.project_url() || '/functions/v1/' || name;
 
-	-- Loguear la URL a donde se va a atacar
-	raise warning 'Invoking edge function at URL: %', target_url;
-
-	-- Perform async HTTP request to the edge function
 	perform net.http_post(
-			url => target_url, -- Usar la variable
-			headers => jsonb_build_object(
-					'Content-Type', 'application/json',
-					'Authorization', auth_header
-					   ),
-			body => body,
-			timeout_milliseconds => timeout_milliseconds
-			);
+		url => target_url,
+		headers => jsonb_build_object(
+				'Content-Type', 'application/json',
+				'Authorization', auth_header
+				   ),
+		body => body,
+		timeout_milliseconds => timeout_milliseconds
+	);
 end;
 $$;
 
--- Generic trigger function to clear a column on update
 create or replace function util.clear_column()
 	returns trigger
 language plpgsql as $$
