@@ -24,7 +24,6 @@ begin
 end;
 $$;
 
--- Function to process embedding jobs from the queue
 create or replace function util.process_embeddings(
 	batch_size int = 10,
 	max_requests int = 10,
@@ -37,41 +36,41 @@ declare
 	job_batches jsonb[];
 	batch jsonb;
 begin
+	-- ... (el código WITH permanece igual) ...
 	with
-		-- First get jobs and assign batch numbers
 		numbered_jobs as (
 			select
 				message || jsonb_build_object('jobId', msg_id) as job_info,
-				(row_number() over (order by 1) - 1) / batch_size as batch_num
+				(row_number() over (order by msg_id) - 1) / batch_size as batch_num
 			from pgmq.read(
 					queue_name => 'embedding_jobs',
 					vt => timeout_milliseconds / 1000,
 					qty => max_requests * batch_size
 				 )
 		),
-		-- Then group jobs into batches
 		batched_jobs as (
 			select
-				jsonb_agg(job_info) as batch_array,
+				jsonb_agg(job_info ORDER BY (job_info->>'jobId')::bigint) as batch_array,
 				batch_num
 			from numbered_jobs
 			group by batch_num
 		)
-	-- Finally aggregate all batches into array
-	select array_agg(batch_array)
+	select coalesce(array_agg(batch_array ORDER BY batch_num), ARRAY[]::jsonb[])
 	from batched_jobs
 	into job_batches;
 
-	-- Invoke the embed edge function for each batch
+	-- Invoke using positional arguments
 	foreach batch in array job_batches loop
+			-- Llamada posicional: (text, jsonb, integer)
 			perform util.invoke_edge_function(
-					name => 'embed',
-					body => batch,
-					timeout_milliseconds => timeout_milliseconds
+					'embed'::text,
+					batch,
+					timeout_milliseconds
 					);
 		end loop;
 end;
 $$;
+
 
 -- Schedule the embedding processing
 select

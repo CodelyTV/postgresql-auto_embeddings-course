@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     postgresql-server-dev-16 \
+    libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and install pgmq
@@ -18,13 +19,6 @@ RUN git clone https://github.com/tembo-io/pgmq.git /pgmq \
 RUN cd /tmp \
     && git clone https://github.com/supabase/pg_net.git \
     && cd pg_net \
-    && make \
-    && make install
-
-# Install halfvec extension
-RUN cd /tmp \
-    && git clone https://github.com/neondatabase/halfvec.git \
-    && cd halfvec \
     && make \
     && make install
 

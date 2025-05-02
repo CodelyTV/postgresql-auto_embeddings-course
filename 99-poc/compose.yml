@@ -1,12 +1,10 @@
 services:
   postgres:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: supabase/postgres:15.8.1.083
     restart: unless-stopped
     environment:
       POSTGRES_DB: postgres
-      POSTGRES_USER: codely
+      POSTGRES_USER: supabase_admin
       POSTGRES_PASSWORD: c0d3ly7v
     ports:
       - "5432:5432"
