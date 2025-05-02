@@ -1,5 +1,3 @@
--- CREATE EXTENSION halfvec;
-
 CREATE SCHEMA mooc;
 
 CREATE TABLE mooc.courses (
@@ -11,4 +9,4 @@ CREATE TABLE mooc.courses (
 	embedding vector(768)
 );
 
--- create index on documents using hnsw (embedding halfvec_cosine_ops);
+-- create index on mooc.courses using hnsw (embedding halfvec_cosine_ops);

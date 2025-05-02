@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: pgvector/pgvector:0.8.0-pg16
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_DB: postgres

@@ -20,3 +20,5 @@ create extension if not exists pg_cron;
 create extension if not exists hstore;
 -- with
 --   schema extensions;
+
+CREATE EXTENSION if not exists halfvec;
