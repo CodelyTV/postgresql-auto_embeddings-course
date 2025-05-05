@@ -7,11 +7,14 @@ CREATE OR REPLACE FUNCTION generate_embedding(
 AS
 $$
 DECLARE
+	embedding_input_func_name TEXT = tg_argv[0];
+	query_string TEXT;
 	text_content TEXT;
 	request_id BIGINT;
-	api_url TEXT := 'http://1-generate_on_trigger-ollama-1:11434/api/embeddings';
+	api_url TEXT := 'http://3-generate_with_pg_net-ollama-1:11434/api/embeddings';
 BEGIN
-	text_content := new.name || ' ' || new.summary;
+	query_string := 'SELECT ' || embedding_input_func_name || '($1)';
+	EXECUTE query_string INTO text_content USING new;
 
 	SELECT net.http_post(
 		url := api_url,
@@ -31,14 +34,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE TRIGGER trg__courses__generate_embedding_before_insert
-	BEFORE INSERT
-	ON mooc.courses
-	FOR EACH ROW
-EXECUTE FUNCTION generate_embedding();
-
-
-CREATE OR REPLACE FUNCTION handle_embedding_response(
+CREATE OR REPLACE FUNCTION net._http_response__handle_embedding_response(
 )
 	RETURNS TRIGGER
 	LANGUAGE plpgsql
@@ -59,9 +55,8 @@ BEGIN
 END;
 $$;
 
--- Create trigger for HTTP response
-CREATE OR REPLACE TRIGGER trg__net_responses__handle_embedding
+CREATE OR REPLACE TRIGGER trg__http_response__handle_embedding_response_after_insert
 	AFTER INSERT
 	ON net._http_response
 	FOR EACH ROW
-EXECUTE FUNCTION handle_embedding_response();
+EXECUTE FUNCTION net._http_response__handle_embedding_response();
