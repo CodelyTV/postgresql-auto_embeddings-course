@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS pg_net;
+
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE OR REPLACE FUNCTION generate_embedding(
@@ -18,16 +19,18 @@ BEGIN
 
 
 	SELECT net.http_post(
-			   url := api_url,
-			   body := JSONB_BUILD_OBJECT(
-				   'model', 'nomic-embed-text',
-				   'prompt', text_content
-					   ),
-			   headers := JSONB_BUILD_OBJECT('Content-Type', 'application/json')
-		   )
+		url := api_url,
+		body := JSONB_BUILD_OBJECT(
+			'model', 'nomic-embed-text',
+			'prompt', text_content
+		),
+		headers := JSONB_BUILD_OBJECT('Content-Type', 'application/json')
+	)
 	INTO request_id;
 
 	RAISE WARNING 'Request ID: %', request_id;
+
+	-- PERFORM pg_sleep(10);
 
 	SELECT content::jsonb
 	INTO response_body
