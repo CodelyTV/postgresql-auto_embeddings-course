@@ -40,7 +40,6 @@ BEGIN
 	INTO embedding_array
 	FROM JSONB_ARRAY_ELEMENTS_TEXT(response_body -> 'embedding') AS e;
 
-	-- Cast the array to the vector type
 	new.embedding = embedding_array::vector;
 
 	RETURN new;
