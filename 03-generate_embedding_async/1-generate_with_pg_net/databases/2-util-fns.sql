@@ -9,7 +9,7 @@ DECLARE
 	text_content TEXT;
 	response_body jsonb;
 	embedding_array DOUBLE PRECISION[];
-	api_url TEXT := 'http://3-generate_with_pg_net-ollama-1:11434/api/embeddings';
+	api_url TEXT := 'http://1-generate_with_pg_net-ollama-1:11434/api/embeddings';
 	query_string TEXT;
 BEGIN
 	query_string := 'SELECT ' || embedding_input_func_name || '($1)';

@@ -11,7 +11,7 @@ DECLARE
 	query_string TEXT;
 	text_content TEXT;
 	request_id BIGINT;
-	api_url TEXT := 'http://3-generate_with_pg_net-ollama-1:11434/api/embeddings';
+	api_url TEXT := 'http://1-generate_with_pg_net-ollama-1:11434/api/embeddings';
 BEGIN
 	query_string := 'SELECT ' || embedding_input_func_name || '($1)';
 	EXECUTE query_string INTO text_content USING new;
