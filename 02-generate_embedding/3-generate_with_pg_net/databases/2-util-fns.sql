@@ -1,13 +1,3 @@
-CREATE SCHEMA mooc;
-
-CREATE TABLE mooc.courses (
-	id CHAR(4) PRIMARY KEY NOT NULL,
-	name VARCHAR(255) NOT NULL,
-	summary TEXT,
-	published_at DATE NOT NULL,
-	embedding vector(768)
-);
-
 CREATE OR REPLACE FUNCTION generate_embedding(
 )
 	RETURNS TRIGGER
@@ -15,12 +5,17 @@ CREATE OR REPLACE FUNCTION generate_embedding(
 AS
 $$
 DECLARE
+	embedding_input_func_name TEXT = tg_argv[0];
 	text_content TEXT;
 	response_body jsonb;
 	embedding_array DOUBLE PRECISION[];
-	api_url TEXT := 'http://2-reuse_embedding_generation-ollama-1:11434/api/embeddings';
+	api_url TEXT := 'http://3-generate_with_pg_net-ollama-1:11434/api/embeddings';
+	query_string TEXT;
 BEGIN
-	text_content := new.name || ' ' || new.summary;
+	query_string := 'SELECT ' || embedding_input_func_name || '($1)';
+	EXECUTE query_string INTO text_content USING new;
+
+	RAISE WARNING 'Embedding input: %', text_content;
 
 	SELECT content::jsonb
 	INTO response_body
@@ -31,20 +26,15 @@ BEGIN
 			'prompt', text_content
 		)::TEXT,
 		'application/json'
-	 );
-
+		 );
+		RAISE WARNING 'Embedding response: %', response_body;
 	SELECT ARRAY_AGG(e::DOUBLE PRECISION)
 	INTO embedding_array
 	FROM JSONB_ARRAY_ELEMENTS_TEXT(response_body -> 'embedding') AS e;
 
+	RAISE WARNING 'Embedding array: %', embedding_array;
 	new.embedding = embedding_array::vector;
 
 	RETURN new;
 END;
 $$;
-
-CREATE OR REPLACE TRIGGER trg__courses__generate_embedding_before_insert
-	BEFORE INSERT
-	ON mooc.courses
-	FOR EACH ROW
-EXECUTE FUNCTION generate_embedding();
