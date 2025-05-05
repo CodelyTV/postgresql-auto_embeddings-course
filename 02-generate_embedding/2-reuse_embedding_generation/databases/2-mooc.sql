@@ -18,7 +18,7 @@ DECLARE
 	text_content TEXT;
 	response_body jsonb;
 	embedding_array DOUBLE PRECISION[];
-	api_url TEXT := 'http://1-generate_with_pg_sql_http-ollama-1:11434/api/embeddings';
+	api_url TEXT := 'http://2-reuse_embedding_generation-ollama-1:11434/api/embeddings';
 BEGIN
 	text_content := new.name || ' ' || new.summary;
 
