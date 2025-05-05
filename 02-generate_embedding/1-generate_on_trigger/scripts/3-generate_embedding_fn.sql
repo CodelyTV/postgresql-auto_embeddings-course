@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS pg_net;
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE OR REPLACE FUNCTION generate_embedding(
 )
@@ -20,20 +21,20 @@ BEGIN
 		body := JSONB_BUILD_OBJECT(
 			'model', 'nomic-embed-text',
 			'prompt', text_content
-		),
+				),
 		headers := JSONB_BUILD_OBJECT('Content-Type', 'application/json')
-	);
+				  );
 
-	SELECT content::jsonb
+	SELECT (response).body::jsonb
 	INTO response_body
-	FROM net._http_response
-	WHERE id = request_id;
+	FROM net.http_collect_response(request_id, async:=false);
 
 	SELECT ARRAY_AGG(e::DOUBLE PRECISION)
 	INTO embedding_array
 	FROM JSONB_ARRAY_ELEMENTS_TEXT(response_body -> 'embedding') AS e;
 
-	new.embedding = vector(embedding_array);
+	-- Cast the array to the vector type
+	new.embedding = embedding_array::vector;
 
 	RETURN new;
 END;
