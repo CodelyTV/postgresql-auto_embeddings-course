@@ -4,7 +4,7 @@ CREATE OR REPLACE FUNCTION generate_embedding(
 AS
 $$
 BEGIN
-	NEW.embedding = '[' || array_to_string(array_fill(0::double precision, ARRAY[1536]), ',') || ']';
+	NEW.embedding = '[' || array_to_string(array_fill(0::double precision, ARRAY[768]), ',') || ']';
 	RETURN NEW;
 END;
 $$;

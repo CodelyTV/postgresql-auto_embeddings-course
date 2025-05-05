@@ -5,5 +5,5 @@ CREATE TABLE mooc.courses (
 	name VARCHAR(255) NOT NULL,
 	summary TEXT,
 	published_at DATE NOT NULL,
-	embedding vector(1536)
+	embedding vector(768)
 );

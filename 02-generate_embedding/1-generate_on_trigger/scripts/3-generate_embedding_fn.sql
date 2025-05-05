@@ -1,5 +1,4 @@
 CREATE EXTENSION IF NOT EXISTS pg_net;
-
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE OR REPLACE FUNCTION generate_embedding(
@@ -49,9 +48,7 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg__courses__generate_embedding_before_insert ON mooc.courses;
-
-CREATE TRIGGER trg__courses__generate_embedding_before_insert
+CREATE OR REPLACE TRIGGER trg__courses__generate_embedding_before_insert
 	BEFORE INSERT
 	ON mooc.courses
 	FOR EACH ROW
