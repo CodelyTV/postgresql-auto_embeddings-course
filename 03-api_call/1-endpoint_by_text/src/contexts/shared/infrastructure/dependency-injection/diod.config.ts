@@ -21,9 +21,11 @@ import { ShopCourseSnapshotProjector } from "../../../shop/courses/application/p
 import { ShopCourseRepository } from "../../../shop/courses/domain/ShopCourseRepository";
 import { PostgresShopCourseRepository } from "../../../shop/courses/infraestrcuture/PostgresShopCourseRepository";
 import { Clock, SystemClock } from "../../domain/Clock";
+import { EmbeddingGenerator } from "../../domain/EmbeddingGenerator";
 import { EventBus } from "../../domain/event/EventBus";
 import { SnapshotPublisher } from "../../domain/SnapshotPublisher";
 import { InMemoryEventBus } from "../domain-event/InMemoryEventBus";
+import { OllamaEmbeddingGenerator } from "../embedding/OllamaEmbeddingGenerator";
 import { KafkaConsumer } from "../kafka/KafkaConsumer";
 import { KafkaProducer } from "../kafka/KafkaProducer";
 import { KafkaSnapshotPublisher } from "../kafka/KafkaSnapshotPublisher";
@@ -47,6 +49,8 @@ builder
 
 builder.register(EventBus).use(InMemoryEventBus);
 builder.register(Clock).use(SystemClock);
+
+builder.register(EmbeddingGenerator).use(OllamaEmbeddingGenerator);
 
 // Kafka
 builder
