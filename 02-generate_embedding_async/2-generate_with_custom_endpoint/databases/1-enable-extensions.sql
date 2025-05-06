@@ -1,4 +1,4 @@
 CREATE ROLE postgres WITH LOGIN;
 
-create extension if not exists vector;
-create extension if not exists http;
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_net;

@@ -1,4 +1,7 @@
-ALTER TABLE mooc.courses ADD COLUMN request_id BIGINT;
+CREATE TABLE net.embedding_requests (
+	request_id BIGINT NOT NULL,
+	table_name TEXT NOT NULL
+);
 
 CREATE OR REPLACE FUNCTION generate_embedding(
 )
@@ -8,10 +11,12 @@ AS
 $$
 DECLARE
 	embedding_input_func_name TEXT = tg_argv[0];
+	table_name TEXT = tg_table_name; -- Get the table name from the trigger arguments
+	schema_name TEXT = tg_table_schema; -- Also the schema
 	query_string TEXT;
 	text_content TEXT;
 	request_id BIGINT;
-	api_url TEXT := 'http://1-generate_with_pg_net-ollama-1:11434/api/embeddings';
+	api_url TEXT := 'http://2-generate_with_custom_endpoint-ollama-1:11434/api/embeddings';
 BEGIN
 	query_string := 'SELECT ' || embedding_input_func_name || '($1)';
 	EXECUTE query_string INTO text_content USING new;
@@ -26,7 +31,7 @@ BEGIN
 	)
 	INTO request_id;
 
-	RAISE WARNING 'Request ID: %', request_id;
+	INSERT INTO net.embedding_requests (request_id, table_name) VALUES (request_id, schema_name || '.' || table_name);
 
 	new.request_id = request_id;
 
@@ -42,21 +47,16 @@ AS
 $$
 DECLARE
 	embedding_array FLOAT[];
+	table_name_with_schema TEXT;
 BEGIN
 	SELECT ARRAY_AGG(e::DOUBLE PRECISION)
 	INTO embedding_array
 	FROM JSONB_ARRAY_ELEMENTS_TEXT(new.content::jsonb -> 'embedding') AS e;
 
-	UPDATE mooc.courses
-	SET embedding = embedding_array::vector
-	WHERE request_id = new.id;
+	SELECT table_name FROM net.embedding_requests WHERE request_id = new.id INTO table_name_with_schema;
 
+	EXECUTE FORMAT('UPDATE %s SET embedding = $1::vector WHERE request_id = $2', table_name_with_schema)
+		USING embedding_array, new.id;
 	RETURN new;
 END;
 $$;
-
-CREATE OR REPLACE TRIGGER trg__http_response__handle_embedding_response_after_insert
-	AFTER INSERT
-	ON net._http_response
-	FOR EACH ROW
-EXECUTE FUNCTION net._http_response__handle_embedding_response();

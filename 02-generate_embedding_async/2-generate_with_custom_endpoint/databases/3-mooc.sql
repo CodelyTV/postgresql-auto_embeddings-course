@@ -5,7 +5,8 @@ CREATE TABLE mooc.courses (
 	name VARCHAR(255) NOT NULL,
 	summary TEXT,
 	published_at DATE NOT NULL,
-	embedding vector(768)
+	embedding vector(768),
+	request_id BIGINT
 );
 
 CREATE OR REPLACE FUNCTION mooc.courses__generate_embedding_input(

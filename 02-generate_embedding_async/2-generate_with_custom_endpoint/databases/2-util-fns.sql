@@ -6,32 +6,53 @@ AS
 $$
 DECLARE
 	embedding_input_func_name TEXT = tg_argv[0];
-	text_content TEXT;
-	response_body jsonb;
-	embedding_array DOUBLE PRECISION[];
-	api_url TEXT := 'http://1-generate_with_pg_net-ollama-1:11434/api/embeddings';
 	query_string TEXT;
+	text_content TEXT;
+	request_id BIGINT;
+	api_url TEXT := 'http://2-generate_with_custom_endpoint-ollama-1:11434/api/embeddings';
 BEGIN
 	query_string := 'SELECT ' || embedding_input_func_name || '($1)';
 	EXECUTE query_string INTO text_content USING new;
 
-	SELECT content::jsonb
-	INTO response_body
-	FROM http_post(
-		api_url,
-		JSONB_BUILD_OBJECT(
+	SELECT net.http_post(
+		url := api_url,
+		body := JSONB_BUILD_OBJECT(
 			'model', 'nomic-embed-text',
 			'prompt', text_content
-		)::TEXT,
-		'application/json'
-	 );
+				),
+		headers := JSONB_BUILD_OBJECT('Content-Type', 'application/json')
+	)
+	INTO request_id;
 
-	SELECT ARRAY_AGG(e::DOUBLE PRECISION)
-	INTO embedding_array
-	FROM JSONB_ARRAY_ELEMENTS_TEXT(response_body -> 'embedding') AS e;
-
-	new.embedding = embedding_array::vector;
+	new.request_id = request_id;
 
 	RETURN new;
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION net._http_response__handle_embedding_response(
+)
+	RETURNS TRIGGER
+	LANGUAGE plpgsql
+AS
+$$
+DECLARE
+	embedding_array FLOAT[];
+BEGIN
+	SELECT ARRAY_AGG(e::DOUBLE PRECISION)
+	INTO embedding_array
+	FROM JSONB_ARRAY_ELEMENTS_TEXT(new.content::jsonb -> 'embedding') AS e;
+
+	UPDATE mooc.courses
+	SET embedding = embedding_array::vector
+	WHERE request_id = new.id;
+
+	RETURN new;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER trg__http_response__handle_embedding_response_after_insert
+	AFTER INSERT
+	ON net._http_response
+	FOR EACH ROW
+EXECUTE FUNCTION net._http_response__handle_embedding_response();
