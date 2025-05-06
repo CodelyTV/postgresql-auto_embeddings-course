@@ -11,6 +11,7 @@ if (typeof globalThis.TextEncoder === "undefined") {
 
 @Service()
 export class OllamaEmbeddingGenerator extends EmbeddingGenerator {
+	private readonly maxAttemptsToRetry = 3;
 	private readonly embeddings: OllamaEmbeddings;
 
 	constructor() {
@@ -23,6 +24,23 @@ export class OllamaEmbeddingGenerator extends EmbeddingGenerator {
 	}
 
 	async generate(input: string): Promise<Embedding> {
-		return new Embedding(await this.embeddings.embedQuery(input));
+		const output = await this.retry(
+			async () => this.embeddings.embedQuery(input),
+			this.maxAttemptsToRetry,
+		);
+
+		return new Embedding(input, output);
+	}
+
+	private async retry<T>(fn: () => Promise<T>, retries: number): Promise<T> {
+		try {
+			return await fn();
+		} catch (error) {
+			if (retries <= 0) {
+				throw error;
+			}
+
+			return this.retry(fn, retries - 1);
+		}
 	}
 }

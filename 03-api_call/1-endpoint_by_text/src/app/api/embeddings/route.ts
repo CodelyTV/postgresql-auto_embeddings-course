@@ -18,6 +18,6 @@ export async function POST(request: Request): Promise<NextResponse> {
 
 		const embedding = await generator.generate(input);
 
-		return HttpNextResponse.json({ embedding: embedding.value });
+		return HttpNextResponse.json({ embedding: embedding.output });
 	});
 }
