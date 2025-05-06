@@ -1,3 +1,13 @@
+CREATE SCHEMA mooc;
+
+CREATE TABLE mooc.courses (
+	id CHAR(4) PRIMARY KEY NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	summary TEXT,
+	published_at DATE NOT NULL,
+	embedding vector(768)
+);
+
 CREATE OR REPLACE FUNCTION generate_embedding(
 )
 	RETURNS TRIGGER
@@ -8,7 +18,7 @@ DECLARE
 	text_content TEXT;
 	response_body jsonb;
 	embedding_array DOUBLE PRECISION[];
-	api_url TEXT := 'http://1-generate_with_pg_sql_http-ollama-1:11434/api/embeddings';
+	api_url TEXT := 'http://3-reuse_embedding_generation-ollama-1:11434/api/embeddings';
 BEGIN
 	text_content := new.name || ' ' || new.summary;
 
@@ -19,7 +29,7 @@ BEGIN
 		JSONB_BUILD_OBJECT(
 			'model', 'nomic-embed-text',
 			'prompt', text_content
-		)::text,
+		)::TEXT,
 		'application/json'
 	 );
 
