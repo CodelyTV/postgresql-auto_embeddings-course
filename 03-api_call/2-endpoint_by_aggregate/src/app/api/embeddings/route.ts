@@ -31,6 +31,6 @@ export async function POST(request: Request): Promise<NextResponse> {
 
 		await generator.generate(id);
 
-		return HttpNextResponse.ok();
+		return HttpNextResponse.created();
 	});
 }
