@@ -4,6 +4,7 @@ import { Kafka } from "kafkajs";
 
 import { CourseCreator } from "../../../mooc/courses/application/create/CourseCreator";
 import { CourseDeleter } from "../../../mooc/courses/application/delete/CourseDeleter";
+import { CourseEmbeddingGenerator } from "../../../mooc/courses/application/generate-embedding/CourseEmbeddingGenerator";
 import { CourseSnapshotPublisher } from "../../../mooc/courses/application/publish-snapshot/CourseSnapshotPublisher";
 import { PublishCourseSnapshotOnCourseDomainEvent } from "../../../mooc/courses/application/publish-snapshot/PublishCourseSnapshotOnCourseDomainEvent";
 import { CourseRenamer } from "../../../mooc/courses/application/rename/CourseRenamer";
@@ -40,7 +41,7 @@ builder
 		return new PostgresConnection(
 			"localhost",
 			5432,
-			"codely",
+			"supabase_admin",
 			"c0d3ly7v",
 			"postgres",
 		);
@@ -103,6 +104,8 @@ builder.registerAndUse(CourseSnapshotPublisher);
 builder
 	.registerAndUse(PublishCourseSnapshotOnCourseDomainEvent)
 	.addTag("subscriber");
+
+builder.registerAndUse(CourseEmbeddingGenerator);
 
 /* SHOP Context */
 // ShopCourse

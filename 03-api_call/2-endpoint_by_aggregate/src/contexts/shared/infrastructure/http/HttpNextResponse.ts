@@ -21,6 +21,19 @@ export class HttpNextResponse {
 					data: {},
 				},
 			},
+			{ status: 400 },
+		);
+	}
+
+	static notFound(message: string): NextResponse {
+		return NextResponse.json(
+			{
+				error: {
+					type: "NotFound",
+					description: message,
+					data: {},
+				},
+			},
 			{ status: 404 },
 		);
 	}
@@ -46,5 +59,9 @@ export class HttpNextResponse {
 
 	static json<JsonBody>(data: JsonBody): NextResponse {
 		return NextResponse.json(data, { status: 200 });
+	}
+
+	static ok(): NextResponse {
+		return new NextResponse(null, { status: 200 });
 	}
 }

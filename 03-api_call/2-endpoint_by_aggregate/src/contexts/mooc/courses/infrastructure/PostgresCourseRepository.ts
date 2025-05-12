@@ -11,6 +11,7 @@ type DatabaseCourseRow = {
 	name: string;
 	summary: string;
 	categories: string[];
+	embedding: number[];
 	published_at: Date;
 };
 
@@ -23,25 +24,27 @@ export class PostgresCourseRepository
 		const userPrimitives = course.toPrimitives();
 
 		await this.execute`
-			INSERT INTO mooc.courses (id, name, summary, categories, published_at)
+			INSERT INTO mooc.courses (id, name, summary, categories, published_at, embedding)
 			VALUES (
-					   ${userPrimitives.id},
-					   ${userPrimitives.name},
-					   ${userPrimitives.summary},
-					   ${userPrimitives.categories},
-					   ${new Date(userPrimitives.publishedAt)}
-				   )
+				${userPrimitives.id},
+				${userPrimitives.name},
+				${userPrimitives.summary},
+				${userPrimitives.categories},
+				${new Date(userPrimitives.publishedAt)},
+				${JSON.stringify(userPrimitives.embedding)}
+			)
 			ON CONFLICT (id) DO UPDATE SET
 				name = EXCLUDED.name,
 				summary = EXCLUDED.summary,
 				categories = EXCLUDED.categories,
-				published_at = EXCLUDED.published_at;
+				published_at = EXCLUDED.published_at,
+				embedding = EXCLUDED.embedding;
 		`;
 	}
 
 	async search(id: CourseId): Promise<Course | null> {
 		return await this.searchOne`
-			SELECT id, name, summary, categories, published_at
+			SELECT id, name, summary, categories, published_at, embedding
 			FROM mooc.courses
 			WHERE id = ${id.value};
 		`;
@@ -51,7 +54,7 @@ export class PostgresCourseRepository
 		const plainIds = ids.map((id) => id.value);
 
 		return await this.searchMany`
-			SELECT id, name, summary, categories, published_at
+			SELECT id, name, summary, categories, published_at, embedding
 			FROM mooc.courses
 			WHERE id = ANY(${plainIds}::text[]);
 		`;
@@ -70,6 +73,7 @@ export class PostgresCourseRepository
 			summary: row.summary,
 			categories: row.categories,
 			publishedAt: row.published_at.getTime(),
+			embedding: row.embedding,
 		});
 	}
 }
