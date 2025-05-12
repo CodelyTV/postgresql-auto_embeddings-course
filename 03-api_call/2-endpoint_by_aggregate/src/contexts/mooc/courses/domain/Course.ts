@@ -20,6 +20,7 @@ export class Course extends AggregateRoot {
 		public summary: string,
 		public categories: string[],
 		readonly publishedAt: Date,
+		public embedding?: number[],
 	) {
 		super(Course.aggregateName, id.value);
 	}
@@ -31,6 +32,7 @@ export class Course extends AggregateRoot {
 			primitives.summary,
 			primitives.categories,
 			new Date(primitives.publishedAt),
+			primitives.embedding,
 		);
 	}
 
@@ -66,16 +68,10 @@ export class Course extends AggregateRoot {
 		return course;
 	}
 
-	toPrimitives(): Primitives<Course> {
-		return {
-			aggregateId: this.aggregateId,
-			aggregateName: this.aggregateName,
-			id: this.id.value,
-			name: this.name,
-			summary: this.summary,
-			categories: this.categories,
-			publishedAt: this.publishedAt.getTime(),
-		};
+	embeddingText(): string {
+		return `#${this.name}
+
+${this.summary}`;
 	}
 
 	rename(newName: string): void {
@@ -120,5 +116,22 @@ export class Course extends AggregateRoot {
 
 	delete(): void {
 		this.record(new CourseDeletedDomainEvent(this.id.value));
+	}
+
+	updateEmbedding(newEmbedding: number[]): void {
+		this.embedding = newEmbedding;
+	}
+
+	toPrimitives(): Primitives<Course> {
+		return {
+			aggregateId: this.aggregateId,
+			aggregateName: this.aggregateName,
+			id: this.id.value,
+			name: this.name,
+			summary: this.summary,
+			categories: this.categories,
+			publishedAt: this.publishedAt.getTime(),
+			embedding: this.embedding,
+		};
 	}
 }

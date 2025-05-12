@@ -11,12 +11,12 @@ AS
 $$
 DECLARE
 	embedding_input_func_name TEXT = tg_argv[0];
-	table_name TEXT = tg_table_name; -- Get the table name from the trigger arguments
-	schema_name TEXT = tg_table_schema; -- Also the schema
+	table_name TEXT = tg_table_name;
+	schema_name TEXT = tg_table_schema;
 	query_string TEXT;
 	text_content TEXT;
 	request_id BIGINT;
-	api_url TEXT := 'http://1-endpoint_by_text-ollama-1:11434/api/embeddings';
+	api_url TEXT := 'http://host.docker.internal:3000/api/embeddings';
 BEGIN
 	query_string := 'SELECT ' || embedding_input_func_name || '($1)';
 	EXECUTE query_string INTO text_content USING new;
@@ -24,8 +24,7 @@ BEGIN
 	SELECT net.http_post(
 		url := api_url,
 		body := JSONB_BUILD_OBJECT(
-			'model', 'nomic-embed-text',
-			'prompt', text_content
+			'input', text_content
 		),
 		headers := JSONB_BUILD_OBJECT('Content-Type', 'application/json')
 	)
