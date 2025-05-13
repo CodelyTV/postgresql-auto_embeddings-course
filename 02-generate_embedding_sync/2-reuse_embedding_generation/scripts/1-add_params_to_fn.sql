@@ -1,4 +1,3 @@
-
 CREATE OR REPLACE FUNCTION generate_embedding(
 )
 	RETURNS TRIGGER
