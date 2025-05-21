@@ -6,7 +6,7 @@ import OpenAI from "openai";
 import postgres from "postgres";
 import { z } from "zod";
 
-import { executeWithErrorHandling } from "../../../../contexts/shared/infrastructure/http/executeWithErrorHandling";
+import { withErrorHandling } from "../../../../contexts/shared/infrastructure/http/withErrorHandling";
 
 const openai = new OpenAI({
 	apiKey: process.env.OPENAI_API_KEY,
@@ -145,72 +145,69 @@ async function processJob(job: Job): Promise<void> {
 	}
 }
 
-export async function POST(request: Request): Promise<NextResponse> {
-	return executeWithErrorHandling(async () => {
-		let pendingJobs: Job[];
+export const POST = withErrorHandling(async function (
+	request: Request,
+): Promise<NextResponse> {
+	let pendingJobs: Job[];
 
-		if (request.headers.get("content-type") !== "application/json") {
-			return new NextResponse("Expected json body", { status: 400 });
+	if (request.headers.get("content-type") !== "application/json") {
+		return new NextResponse("Expected json body", { status: 400 });
+	}
+
+	try {
+		const rawBody = await request.json();
+		const parseResult = z.array(jobSchema).safeParse(rawBody);
+
+		if (!parseResult.success) {
+			console.error("Invalid request body:", parseResult.error.issues);
+
+			return new NextResponse(
+				`Invalid request body: ${parseResult.error.message}`,
+				{ status: 400 },
+			);
 		}
+		pendingJobs = parseResult.data;
+		console.log(`Received ${pendingJobs.length} jobs to process.`);
+	} catch (error) {
+		console.error("Error parsing request body:", error);
 
+		return new NextResponse("Invalid JSON format", { status: 400 });
+	}
+
+	const completedJobs: Job[] = [];
+	const failedJobs: FailedJob[] = [];
+
+	for (const job of pendingJobs) {
 		try {
-			const rawBody = await request.json();
-			const parseResult = z.array(jobSchema).safeParse(rawBody);
-
-			if (!parseResult.success) {
-				console.error(
-					"Invalid request body:",
-					parseResult.error.issues,
-				);
-
-				return new NextResponse(
-					`Invalid request body: ${parseResult.error.message}`,
-					{ status: 400 },
-				);
-			}
-			pendingJobs = parseResult.data;
-			console.log(`Received ${pendingJobs.length} jobs to process.`);
+			await processJob(job);
+			completedJobs.push(job);
 		} catch (error) {
-			console.error("Error parsing request body:", error);
-
-			return new NextResponse("Invalid JSON format", { status: 400 });
+			console.error(`Failed to process job ${job.jobId}:`, error);
+			failedJobs.push({
+				...job,
+				error:
+					error instanceof Error
+						? error.message
+						: JSON.stringify(error),
+			});
 		}
+	}
 
-		const completedJobs: Job[] = [];
-		const failedJobs: FailedJob[] = [];
+	console.log(
+		`Finished processing jobs: ${completedJobs.length} completed, ${failedJobs.length} failed.`,
+	);
 
-		for (const job of pendingJobs) {
-			try {
-				await processJob(job);
-				completedJobs.push(job);
-			} catch (error) {
-				console.error(`Failed to process job ${job.jobId}:`, error);
-				failedJobs.push({
-					...job,
-					error:
-						error instanceof Error
-							? error.message
-							: JSON.stringify(error),
-				});
-			}
-		}
-
-		console.log(
-			`Finished processing jobs: ${completedJobs.length} completed, ${failedJobs.length} failed.`,
-		);
-
-		return NextResponse.json(
-			{
-				completedJobIds: completedJobs.map((j) => j.jobId),
-				failedJobDetails: failedJobs,
+	return NextResponse.json(
+		{
+			completedJobIds: completedJobs.map((j) => j.jobId),
+			failedJobDetails: failedJobs,
+		},
+		{
+			status: 200,
+			headers: {
+				"X-Completed-Jobs": completedJobs.length.toString(),
+				"X-Failed-Jobs": failedJobs.length.toString(),
 			},
-			{
-				status: 200,
-				headers: {
-					"X-Completed-Jobs": completedJobs.length.toString(),
-					"X-Failed-Jobs": failedJobs.length.toString(),
-				},
-			},
-		);
-	});
-}
+		},
+	);
+});
