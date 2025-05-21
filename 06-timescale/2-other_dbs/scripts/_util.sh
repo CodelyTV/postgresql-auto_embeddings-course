@@ -1,3 +1,3 @@
 util::execute_in_server() {
-	docker exec -it 1-auto_embeddings_pgai-server-1 "${@}"
+	docker exec -it 2-other_dbs-server-1 "${@}"
 }

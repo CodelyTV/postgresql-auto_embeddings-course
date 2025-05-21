@@ -1,3 +1,5 @@
+create extension if not exists vector;
+
 CREATE SCHEMA mooc;
 
 CREATE TABLE mooc.courses (
