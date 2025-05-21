@@ -9,8 +9,6 @@ CREATE TABLE mooc.courses (
 	embedding vector(1536)
 );
 
--- Customize the input for embedding generation
--- e.g. Concatenate title and content with a markdown header
 create or replace function embedding_input(doc mooc.courses)
 	returns text
 	language plpgsql
@@ -21,15 +19,13 @@ begin
 end;
 $$;
 
--- Trigger for insert events
-create trigger embed_documents_on_insert
+create trigger embed_course_on_insert
 	after insert
 	on mooc.courses
 	for each row
 execute function util.queue_embeddings('embedding_input', 'embedding');
 
--- Trigger for update events
-create trigger embed_documents_on_update
+create trigger embed_course_on_update
 	after update of name, summary
 	on mooc.courses
 	for each row

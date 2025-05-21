@@ -22,17 +22,17 @@ $$
 declare
 	headers_raw text;
 	auth_header text;
-	target_url text; -- Variable para almacenar la URL
+	target_url text;
 begin
 	-- If we're in a PostgREST session, reuse the request headers for authorization
 	headers_raw := current_setting('request.headers', true);
 
 	-- Only try to parse if headers are present
 	auth_header := case
-					   when headers_raw is not null then
-						   (headers_raw::json->>'authorization')
-					   else
-						   null
+		when headers_raw is not null then
+			(headers_raw::json->>'authorization')
+		else
+			null
 		end;
 
 	target_url := util.project_url() || '/functions/v1/' || name;
@@ -40,22 +40,11 @@ begin
 	perform net.http_post(
 		url => target_url,
 		headers => jsonb_build_object(
-				'Content-Type', 'application/json',
-				'Authorization', auth_header
-				   ),
+			'Content-Type', 'application/json',
+			'Authorization', auth_header
+		),
 		body => body,
 		timeout_milliseconds => timeout_milliseconds
 	);
-end;
-$$;
-
-create or replace function util.clear_column()
-	returns trigger
-language plpgsql as $$
-declare
-	clear_column text := TG_ARGV[0];
-begin
-	NEW := NEW #= hstore(clear_column, NULL);
-	return NEW;
 end;
 $$;

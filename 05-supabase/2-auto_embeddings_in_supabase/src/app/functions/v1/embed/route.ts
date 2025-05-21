@@ -1,4 +1,4 @@
-/* eslint-disable camelcase,check-file/folder-naming-convention,no-console,@typescript-eslint/no-unused-vars */
+/* eslint-disable camelcase,check-file/folder-naming-convention,no-console,@typescript-eslint/no-unused-vars,no-await-in-loop */
 import "reflect-metadata";
 
 import { NextResponse } from "next/server";
@@ -109,7 +109,7 @@ async function processJob(job: Job): Promise<void> {
 		const result = await sql`
       UPDATE ${sql(schema)}.${sql(table)}
       SET
-        ${sql(embeddingColumn)} = ${JSON.stringify(embedding)}::vector -- Asegúrate que el tipo es correcto (ej: ::vector)
+        ${sql(embeddingColumn)} = ${JSON.stringify(embedding)}::vector
       WHERE
         id = ${id}
     `;
@@ -131,7 +131,7 @@ async function processJob(job: Job): Promise<void> {
 
 	try {
 		await sql`
-      SELECT pgmq.delete(${QUEUE_NAME}, ARRAY[${jobId}::bigint]) -- Convertir jobId a bigint para PGMQ
+      SELECT pgmq.delete(${QUEUE_NAME}, ARRAY[${jobId}::bigint])
     `;
 		console.log(`Job ${jobId} deleted from queue ${QUEUE_NAME}.`);
 	} catch (error) {

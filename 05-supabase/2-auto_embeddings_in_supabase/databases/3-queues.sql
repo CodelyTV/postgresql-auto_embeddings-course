@@ -1,7 +1,5 @@
--- Queue for processing embedding jobs
 select pgmq.create('embedding_jobs');
 
--- Generic trigger function to queue embedding jobs
 create or replace function util.queue_embeddings()
 	returns trigger
 language plpgsql
@@ -11,15 +9,15 @@ declare
 	embedding_column text = TG_ARGV[1];
 begin
 	perform pgmq.send(
-    queue_name => 'embedding_jobs',
-    msg => jsonb_build_object(
-      'id', NEW.id,
-      'schema', TG_TABLE_SCHEMA,
-      'table', TG_TABLE_NAME,
-      'contentFunction', content_function,
-      'embeddingColumn', embedding_column
-    )
-  );
+		queue_name => 'embedding_jobs',
+		msg => jsonb_build_object(
+			'id', NEW.id,
+			'schema', TG_TABLE_SCHEMA,
+			'table', TG_TABLE_NAME,
+			'contentFunction', content_function,
+			'embeddingColumn', embedding_column
+		)
+	);
 	return NEW;
 end;
 $$;
@@ -42,10 +40,10 @@ begin
 				message || jsonb_build_object('jobId', msg_id) as job_info,
 				(row_number() over (order by msg_id) - 1) / batch_size as batch_num
 			from pgmq.read(
-					queue_name => 'embedding_jobs',
-					vt => timeout_milliseconds / 1000,
-					qty => max_requests * batch_size
-				 )
+				queue_name => 'embedding_jobs',
+				vt => timeout_milliseconds / 1000,
+				qty => max_requests * batch_size
+			 )
 		),
 		batched_jobs as (
 			select
@@ -72,9 +70,9 @@ $$;
 -- Schedule the embedding processing
 select
 	cron.schedule(
-			'process-embeddings',
-			'10 seconds',
-			$$
-    select util.process_embeddings();
-    $$
+		'process-embeddings',
+		'10 seconds',
+		$$
+		select util.process_embeddings();
+		$$
 	);
