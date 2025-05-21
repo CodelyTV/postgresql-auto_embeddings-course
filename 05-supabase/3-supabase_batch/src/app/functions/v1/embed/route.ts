@@ -191,33 +191,30 @@ async function extractJobsFromRequest(request: Request): Promise<RequestJob[]> {
 	return parseResult.data;
 }
 
-async function waitUntilBatchIsProcessed(
-	pendingBatch: OpenAI.Batches.Batch,
-): Promise<OpenAI.Batches.Batch> {
-	try {
-		while (true) {
-			const currentBatch = await openai.batches.retrieve(pendingBatch.id);
-			console.log(
-				`> Batch job ${currentBatch.id} status: ${currentBatch.status}`,
-			);
+async function waitUntilBatchIsCompleted(
+	pendingBatchId: string,
+): Promise<string> {
+	while (true) {
+		const currentBatch = await openai.batches.retrieve(pendingBatchId);
+		console.log(
+			`> Batch job ${currentBatch.id} status: ${currentBatch.status}`,
+		);
 
-			if (
-				currentBatch.status === "completed" ||
-				currentBatch.status === "failed" ||
-				currentBatch.status === "cancelled"
-			) {
-				return currentBatch;
+		if (currentBatch.status === "completed") {
+			if (!currentBatch.output_file_id) {
+				throw new EmbeddingGenerationError(
+					`> Batch job ${currentBatch.id} completed but no output file ID found.`,
+				);
 			}
-			await sleep(2000);
+
+			return currentBatch.output_file_id;
 		}
-	} catch (error) {
-		throw new EmbeddingGenerationError("Error polling batch job status");
+
+		await sleep(2000);
 	}
 }
 
-async function createOpenAIBatchRequest(
-	job: Job[],
-): Promise<OpenAI.Batches.Batch> {
+async function createOpenAIBatchRequest(job: Job[]): Promise<string> {
 	const embeddingBodies: BatchEmbeddingItem[] = job.map((richJob) => ({
 		custom_id: richJob.originalJob.jobId.toString(),
 		method: "POST",
@@ -262,14 +259,7 @@ async function createOpenAIBatchRequest(
 		);
 	} finally {
 		if (tempFilePath) {
-			try {
-				await fs.unlink(tempFilePath);
-			} catch (unlinkError) {
-				console.warn(
-					`Failed to delete temporary file ${tempFilePath}:`,
-					unlinkError,
-				);
-			}
+			await fs.unlink(tempFilePath);
 		}
 	}
 
@@ -279,23 +269,16 @@ async function createOpenAIBatchRequest(
 		);
 	}
 
-	let batchJob: OpenAI.Batches.Batch;
-	try {
-		batchJob = await openai.batches.create({
-			input_file_id: openaiFileId,
-			endpoint: "/v1/embeddings",
-			completion_window: "24h",
-		});
-		console.log(
-			`Batch job created with OpenAI. Batch ID: ${batchJob.id}, Status: ${batchJob.status}`,
-		);
-	} catch (error) {
-		throw new EmbeddingGenerationError(
-			`"Failed to create batch job with OpenAI:" error`,
-		);
-	}
+	const batchJob = await openai.batches.create({
+		input_file_id: openaiFileId,
+		endpoint: "/v1/embeddings",
+		completion_window: "24h",
+	});
+	console.log(
+		`> Batch job created with OpenAI. Batch ID: ${batchJob.id}, Status: ${batchJob.status}`,
+	);
 
-	return batchJob;
+	return batchJob.id;
 }
 
 async function addContentToJobs(jobsToProcess: RequestJob[]): Promise<{
@@ -344,151 +327,65 @@ export const POST = withErrorHandling(async function (
 	const { jobsWithContentToProcess, failedJobs } =
 		await addContentToJobs(jobsToProcess);
 
-	const pendingBatch = await createOpenAIBatchRequest(
+	const pendingBatchId = await createOpenAIBatchRequest(
 		jobsWithContentToProcess,
 	);
 
-	console.log(`> Polling batch job ${pendingBatch.id} status...`);
-	const processedBatch = await waitUntilBatchIsProcessed(pendingBatch);
+	console.log(`> Polling batch job ${pendingBatchId} status...`);
+	const completedBatchFileId =
+		await waitUntilBatchIsCompleted(pendingBatchId);
+
+	if (!completedBatchFileId) {
+		throw new EmbeddingGenerationError(
+			`> Batch job ${pendingBatchId} completed but no output file ID found.`,
+		);
+	}
+	console.log(
+		`> Batch job ${pendingBatchId} completed. Output file Id: ${completedBatchFileId}. Downloading results...`,
+	);
 
 	const completedJobs: RequestJob[] = [];
+	const resultFileContent = await openai.files.content(completedBatchFileId);
+	const resultsText = await resultFileContent.text();
+	const resultLines = resultsText
+		.trim()
+		.split("\\n")
+		.filter((line) => line.trim() !== "");
 
-	if (processedBatch.status === "completed") {
-		if (!processedBatch.output_file_id) {
-			console.error(
-				`Batch job ${processedBatch.id} completed but no output file ID found.`,
-			);
-			jobsWithContentToProcess.forEach((richJob) => {
-				failedJobs.push({
-					...richJob.originalJob,
-					error: "OpenAI batch completed but no output file ID was provided.",
-				});
+	const resultMap = new Map<string, Job>(
+		jobsWithContentToProcess.map((rj) => [
+			rj.originalJob.jobId.toString(),
+			rj,
+		]),
+	);
+
+	for (const line of resultLines) {
+		const itemResult = JSON.parse(line) as BatchResponseItem;
+		const richJob = resultMap.get(itemResult.custom_id) as Job;
+
+		const originalJobDetails = richJob.originalJob;
+
+		if (
+			itemResult.error ||
+			!itemResult.response ||
+			itemResult.response.status_code !== 200
+		) {
+			failedJobs.push({
+				...originalJobDetails,
+				error: `OpenAI Batch Error`,
 			});
 		} else {
-			console.log(
-				`Batch job ${processedBatch.id} completed. Output file ID: ${processedBatch.output_file_id}. Downloading results...`,
+			const embeddingData = itemResult.response.body.data[0];
+			await updateEmbeddingInDb(
+				originalJobDetails,
+				embeddingData.embedding,
 			);
-			try {
-				const resultFileContent = await openai.files.content(
-					processedBatch.output_file_id,
-				);
-				const resultsText = await resultFileContent.text();
-				const resultLines = resultsText
-					.trim()
-					.split("\\n")
-					.filter((line) => line.trim() !== "");
-
-				const resultMap = new Map<string, Job>(
-					jobsWithContentToProcess.map((rj) => [
-						rj.originalJob.jobId.toString(),
-						rj,
-					]),
-				);
-
-				for (const line of resultLines) {
-					const itemResult = JSON.parse(line) as BatchResponseItem;
-					const richJob = resultMap.get(itemResult.custom_id);
-
-					if (!richJob) {
-						console.warn(
-							`Received result for unknown custom_id: ${itemResult.custom_id}`,
-						);
-						continue;
-					}
-
-					const originalJobDetails = richJob.originalJob;
-
-					if (
-						itemResult.error ||
-						!itemResult.response ||
-						itemResult.response.status_code !== 200
-					) {
-						const errorMessage =
-							itemResult.error?.message ??
-							`OpenAI embedding failed with status ${itemResult.response?.status_code ?? "unknown"}`;
-						console.error(
-							`Embedding failed for job ${originalJobDetails.jobId} (custom_id: ${itemResult.custom_id}): ${errorMessage}`,
-						);
-						failedJobs.push({
-							...originalJobDetails,
-							error: `OpenAI Batch Error: ${errorMessage}`,
-						});
-					} else {
-						const embeddingData = itemResult.response.body.data[0];
-						if (embeddingData && embeddingData.embedding) {
-							try {
-								await updateEmbeddingInDb(
-									originalJobDetails,
-									embeddingData.embedding,
-								);
-								await deleteJobFromQueue(
-									originalJobDetails.jobId,
-								);
-								completedJobs.push(originalJobDetails);
-								console.log(
-									`Successfully processed and stored embedding for job ${originalJobDetails.jobId}.`,
-								);
-							} catch (dbError) {
-								console.error(
-									`Failed to update DB or PGMQ for job ${originalJobDetails.jobId}:`,
-									dbError,
-								);
-								failedJobs.push({
-									...originalJobDetails,
-									error: `DB/PGMQ update failed after embedding: ${dbError instanceof Error ? dbError.message : "Unknown DB error"}`,
-								});
-							}
-						} else {
-							console.error(
-								`Embedding data missing in successful response for job ${originalJobDetails.jobId} (custom_id: ${itemResult.custom_id})`,
-							);
-							failedJobs.push({
-								...originalJobDetails,
-								error: "OpenAI Batch Error: Embedding data missing in successful response.",
-							});
-						}
-					}
-				}
-			} catch (error) {
-				console.error(
-					`Failed to download or process batch results file ${processedBatch.output_file_id}:`,
-					error,
-				);
-				jobsWithContentToProcess.forEach((rj) => {
-					if (
-						!completedJobs.find(
-							(cj) => cj.jobId === rj.originalJob.jobId,
-						) &&
-						!failedJobs.find(
-							(fj) => fj.jobId === rj.originalJob.jobId,
-						)
-					) {
-						failedJobs.push({
-							...rj.originalJob,
-							error: `Failed to process batch results: ${error instanceof Error ? error.message : "Result processing error"}`,
-						});
-					}
-				});
-			}
+			await deleteJobFromQueue(originalJobDetails.jobId);
+			completedJobs.push(originalJobDetails);
+			console.log(
+				`Successfully processed and stored embedding for job ${originalJobDetails.jobId}.`,
+			);
 		}
-	} else {
-		console.error(
-			`Batch job ${processedBatch.id} finished with status: ${processedBatch.status}. Errors: ${JSON.stringify(processedBatch.errors)}`,
-		);
-		const batchErrorMsg = `OpenAI Batch ${processedBatch.status}: ${processedBatch.errors?.data?.[0]?.message ?? "Unknown batch error"}`;
-		jobsWithContentToProcess.forEach((richJob) => {
-			if (
-				!completedJobs.find(
-					(cj) => cj.jobId === richJob.originalJob.jobId,
-				) &&
-				!failedJobs.find((fj) => fj.jobId === richJob.originalJob.jobId)
-			) {
-				failedJobs.push({
-					...richJob.originalJob,
-					error: batchErrorMsg,
-				});
-			}
-		});
 	}
 
 	console.log(
