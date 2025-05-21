@@ -1,4 +1,4 @@
-/* eslint-disable camelcase,check-file/folder-naming-convention,no-console,@typescript-eslint/no-unused-vars,no-await-in-loop */
+/* eslint-disable camelcase,check-file/folder-naming-convention,no-console,@typescript-eslint/no-unused-vars,no-await-in-loop,@typescript-eslint/no-unnecessary-condition,no-constant-condition */
 import "reflect-metadata";
 
 import fs from "fs/promises";
@@ -11,6 +11,8 @@ import { Readable } from "stream";
 import { z } from "zod";
 
 import { withErrorHandling } from "../../../../contexts/shared/infrastructure/http/withErrorHandling";
+
+import { EmbeddingGenerationError } from "./EmbeddingGenerationError";
 
 const openai = new OpenAI({
 	apiKey: process.env.OPENAI_API_KEY,
@@ -36,7 +38,7 @@ const failedJobSchema = jobSchema.extend({
 	error: z.string(),
 });
 
-type Job = z.infer<typeof jobSchema>;
+type RequestJob = z.infer<typeof jobSchema>;
 type FailedJob = z.infer<typeof failedJobSchema>;
 
 type Row = {
@@ -44,8 +46,8 @@ type Row = {
 	content: unknown;
 };
 
-type RichJob = {
-	originalJob: Job;
+type Job = {
+	originalJob: RequestJob;
 	contentToEmbed: string;
 };
 
@@ -90,7 +92,9 @@ const sleep = (ms: number): Promise<void> =>
 		setTimeout(resolve, ms);
 	});
 
-async function fetchContentForJob(job: Job): Promise<string> {
+async function searchJobTextContentToGenerateEmbedding(
+	job: RequestJob,
+): Promise<string> {
 	const { id, schema, table, contentFunction } = job;
 	let rows: Row[];
 	try {
@@ -126,7 +130,7 @@ async function fetchContentForJob(job: Job): Promise<string> {
 }
 
 async function updateEmbeddingInDb(
-	job: Job,
+	job: RequestJob,
 	embedding: number[],
 ): Promise<void> {
 	const { id, schema, table, embeddingColumn } = job;
@@ -172,43 +176,35 @@ async function deleteJobFromQueue(jobId: number): Promise<void> {
 	}
 }
 
-export const POST = withErrorHandling(async function (
-	request: Request,
-): Promise<NextResponse> {
-	if (request.headers.get("content-type") !== "application/json") {
-		return new NextResponse("Expected json body", { status: 400 });
+async function extractJobsFromRequest(request: Request): Promise<RequestJob[]> {
+	const rawBody = await request.json();
+	const parseResult = z.array(jobSchema).safeParse(rawBody);
+
+	if (!parseResult.success) {
+		console.error("Invalid request body:", parseResult.error.issues);
+
+		throw new EmbeddingGenerationError(
+			`Invalid request body: ${parseResult.error.message}`,
+		);
 	}
 
-	let pendingJobs: Job[];
-	try {
-		const rawBody = await request.json();
-		const parseResult = z.array(jobSchema).safeParse(rawBody);
+	return parseResult.data;
+}
 
-		if (!parseResult.success) {
-			console.error("Invalid request body:", parseResult.error.issues);
-
-			return new NextResponse(
-				`Invalid request body: ${parseResult.error.message}`,
-				{ status: 400 },
-			);
-		}
-		pendingJobs = parseResult.data;
-		console.log(`Received ${pendingJobs.length} jobs to process.`);
-	} catch (error) {
-		console.error("Error parsing request body:", error);
-
-		return new NextResponse("Invalid JSON format", { status: 400 });
-	}
-
-	const completedJobs: Job[] = [];
+async function extractsomething(jobsToProcess: RequestJob[]): Promise<{
+	jobsWithContentToProcess: Job[];
+	failedJobs: FailedJob[];
+}> {
+	const jobsWithContentToProcess: Job[] = [];
 	const failedJobs: FailedJob[] = [];
-	const jobsForBatch: RichJob[] = [];
 
-	console.log("Fetching content for jobs...");
-	for (const job of pendingJobs) {
+	for (const job of jobsToProcess) {
 		try {
-			const content = await fetchContentForJob(job);
-			jobsForBatch.push({ originalJob: job, contentToEmbed: content });
+			const content = await searchJobTextContentToGenerateEmbedding(job);
+			jobsWithContentToProcess.push({
+				originalJob: job,
+				contentToEmbed: content,
+			});
 		} catch (error) {
 			console.error(
 				`Failed to fetch content for job ${job.jobId}:`,
@@ -224,7 +220,24 @@ export const POST = withErrorHandling(async function (
 		}
 	}
 
-	if (jobsForBatch.length === 0) {
+	return { jobsWithContentToProcess, failedJobs };
+}
+
+export const POST = withErrorHandling(async function (
+	request: Request,
+): Promise<NextResponse> {
+	if (request.headers.get("content-type") !== "application/json") {
+		return new NextResponse("Expected json body", { status: 400 });
+	}
+
+	const jobsToProcess: RequestJob[] = await extractJobsFromRequest(request);
+
+	console.log(`Received ${jobsToProcess.length} jobs to process.`);
+	console.log("Fetching content for jobs...");
+	const { jobsWithContentToProcess, failedJobs } =
+		await extractsomething(jobsToProcess);
+
+	if (jobsWithContentToProcess.length === 0) {
 		console.log(
 			"No jobs eligible for batch processing after content fetching.",
 		);
@@ -238,17 +251,21 @@ export const POST = withErrorHandling(async function (
 		);
 	}
 
-	console.log(`${jobsForBatch.length} jobs prepared for batch embedding.`);
+	console.log(
+		`${jobsWithContentToProcess.length} jobs prepared for batch embedding.`,
+	);
 
-	const batchRequests: BatchRequestItem[] = jobsForBatch.map((richJob) => ({
-		custom_id: richJob.originalJob.jobId.toString(),
-		method: "POST",
-		url: "/v1/embeddings",
-		body: {
-			input: richJob.contentToEmbed,
-			model: EMBEDDING_MODEL,
-		},
-	}));
+	const batchRequests: BatchRequestItem[] = jobsWithContentToProcess.map(
+		(richJob) => ({
+			custom_id: richJob.originalJob.jobId.toString(),
+			method: "POST",
+			url: "/v1/embeddings",
+			body: {
+				input: richJob.contentToEmbed,
+				model: EMBEDDING_MODEL,
+			},
+		}),
+	);
 
 	const jsonlData = batchRequests
 		.map((req) => JSON.stringify(req))
@@ -260,6 +277,8 @@ export const POST = withErrorHandling(async function (
 		tempDir,
 		`embedding-batch-${Date.now()}.jsonl`,
 	);
+
+	const completedJobs: RequestJob[] = [];
 
 	try {
 		await fs.writeFile(tempFilePath, jsonlData);
@@ -281,7 +300,7 @@ export const POST = withErrorHandling(async function (
 			"Failed to create or upload batch file to OpenAI:",
 			error,
 		);
-		jobsForBatch.forEach((richJob) => {
+		jobsWithContentToProcess.forEach((richJob) => {
 			failedJobs.push({
 				...richJob.originalJob,
 				error: `Failed to submit batch to OpenAI: ${error instanceof Error ? error.message : "File upload error"}`,
@@ -329,7 +348,7 @@ export const POST = withErrorHandling(async function (
 		);
 	} catch (error) {
 		console.error("Failed to create batch job with OpenAI:", error);
-		jobsForBatch.forEach((richJob) => {
+		jobsWithContentToProcess.forEach((richJob) => {
 			failedJobs.push({
 				...richJob.originalJob,
 				error: `Failed to create OpenAI batch job: ${error instanceof Error ? error.message : "Batch creation error"}`,
@@ -362,7 +381,7 @@ export const POST = withErrorHandling(async function (
 		}
 	} catch (error) {
 		console.error(`Error polling batch job ${batchJob.id}:`, error);
-		jobsForBatch.forEach((richJob) => {
+		jobsWithContentToProcess.forEach((richJob) => {
 			failedJobs.push({
 				...richJob.originalJob,
 				error: `Failed while polling batch job: ${error instanceof Error ? error.message : "Polling error"}`,
@@ -383,7 +402,7 @@ export const POST = withErrorHandling(async function (
 			console.error(
 				`Batch job ${batchJob.id} completed but no output file ID found.`,
 			);
-			jobsForBatch.forEach((richJob) => {
+			jobsWithContentToProcess.forEach((richJob) => {
 				failedJobs.push({
 					...richJob.originalJob,
 					error: "OpenAI batch completed but no output file ID was provided.",
@@ -403,8 +422,8 @@ export const POST = withErrorHandling(async function (
 					.split("\\n")
 					.filter((line) => line.trim() !== "");
 
-				const resultMap = new Map<string, RichJob>(
-					jobsForBatch.map((rj) => [
+				const resultMap = new Map<string, Job>(
+					jobsWithContentToProcess.map((rj) => [
 						rj.originalJob.jobId.toString(),
 						rj,
 					]),
@@ -479,7 +498,7 @@ export const POST = withErrorHandling(async function (
 					`Failed to download or process batch results file ${batchJob.output_file_id}:`,
 					error,
 				);
-				jobsForBatch.forEach((rj) => {
+				jobsWithContentToProcess.forEach((rj) => {
 					if (
 						!completedJobs.find(
 							(cj) => cj.jobId === rj.originalJob.jobId,
@@ -501,7 +520,7 @@ export const POST = withErrorHandling(async function (
 			`Batch job ${batchJob.id} finished with status: ${batchJob.status}. Errors: ${JSON.stringify(batchJob.errors)}`,
 		);
 		const batchErrorMsg = `OpenAI Batch ${batchJob.status}: ${batchJob.errors?.data?.[0]?.message ?? "Unknown batch error"}`;
-		jobsForBatch.forEach((richJob) => {
+		jobsWithContentToProcess.forEach((richJob) => {
 			if (
 				!completedJobs.find(
 					(cj) => cj.jobId === richJob.originalJob.jobId,
