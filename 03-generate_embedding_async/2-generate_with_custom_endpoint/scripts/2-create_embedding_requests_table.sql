@@ -11,8 +11,8 @@ AS
 $$
 DECLARE
 	embedding_input_func_name TEXT = tg_argv[0];
-	table_name TEXT = tg_table_name; -- Get the table name from the trigger arguments
-	schema_name TEXT = tg_table_schema; -- Also the schema
+	table_name TEXT = tg_table_name;
+	schema_name TEXT = tg_table_schema;
 	query_string TEXT;
 	text_content TEXT;
 	request_id BIGINT;
